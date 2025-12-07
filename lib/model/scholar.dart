@@ -146,8 +146,14 @@ class Scholar {
               value.item2.every((e) => e == null)) {
             lastUpdateTime = DateTime.now();
           }
-          semesters = value.item3;
-          grades = value.item4.fold(<String, List<Grade>>{}, (p, e) {
+
+          // Fix: Do not overwrite local data if fetch failed and returned empty data
+          if (value.item2.every((e) => e == null) || value.item3.isNotEmpty) {
+            semesters = value.item3;
+          }
+          
+          if (value.item2.every((e) => e == null) || value.item4.isNotEmpty) {
+             grades = value.item4.fold(<String, List<Grade>>{}, (p, e) {
             // 体育课
             var matchClass = RegExp(r'(\(.*\)-(.*?))-.*').firstMatch(e.id);
             var key = matchClass?.group(2) ?? e.id.substring(14, 22);
@@ -166,9 +172,19 @@ class Scholar {
             p.putIfAbsent(key, () => <Grade>[]).add(e);
             return p;
           });
-          majorGpaAndCredit = value.item5;
-          specialDates = value.item6;
-          todos = value.item7;
+          }
+         
+          if (value.item2.every((e) => e == null) || value.item5.isNotEmpty) {
+             majorGpaAndCredit = value.item5;
+          }
+          
+          if (value.item2.every((e) => e == null) || value.item6.isNotEmpty) {
+             specialDates = value.item6;
+          }
+          
+          if (value.item2.every((e) => e == null) || value.item7.isNotEmpty) {
+             todos = value.item7;
+          }
 
           // 保研成绩，只取第一次
           var netGrades = grades.values.map((e) => e.first);
