@@ -6,6 +6,7 @@ import 'period.dart';
 import 'grade.dart';
 import 'semester.dart';
 import 'todo.dart';
+import 'custom_session.dart';
 import 'package:celechron/utils/gpa_helper.dart';
 import 'package:celechron/http/spider.dart';
 import 'package:celechron/http/ugrs_spider.dart';
@@ -57,12 +58,150 @@ class Scholar {
   // 作业（学在浙大）
   List<Todo> todos = [];
 
+  // 用户自定义课程列表
+  List<CustomSession> customSessions = [];
+
+  // 被隐藏的教务系统课程ID集合
+  Set<String> hiddenSessionIds = {};
+
   int get gradedCourseCount {
     return grades.values.fold(0, (p, e) => p + e.length);
   }
 
   List<Period> get periods {
-    return semesters.fold(<Period>[], (p, e) => p + e.periods);
+    // 获取所有学期的 periods
+    var allPeriods = semesters.fold(<Period>[], (p, e) => p + e.periods);
+
+    // 过滤掉被隐藏的课程（基于 fromUid）
+    allPeriods = allPeriods.where((period) {
+      if (period.type == PeriodType.classes && period.fromUid != null) {
+        return !hiddenSessionIds.contains(period.fromUid);
+      }
+      return true;
+    }).toList();
+
+    // 添加自定义课程生成的 periods
+    allPeriods.addAll(_generateCustomSessionPeriods());
+
+    return allPeriods;
+  }
+
+  /// 从自定义课程生成 Period 列表
+  List<Period> _generateCustomSessionPeriods() {
+    List<Period> periods = [];
+
+    for (var customSession in customSessions) {
+      // 找到对应的学期
+      final semester = semesters.firstWhereOrNull(
+        (s) => s.name == customSession.semesterName,
+      );
+      if (semester == null) continue;
+
+      // 使用学期的时间配置生成 periods
+      periods.addAll(
+        _generatePeriodsFromCustomSession(customSession, semester),
+      );
+    }
+
+    return periods;
+  }
+
+  /// 从单个自定义课程生成 Period 列表
+  List<Period> _generatePeriodsFromCustomSession(
+    CustomSession session,
+    Semester semester,
+  ) {
+    List<Period> periods = [];
+
+    // 获取学期的日期配置
+    final dayOfWeekToDays = semester.dayOfWeekToDays;
+    final sessionToTime = semester.sessionToTime;
+
+    if (dayOfWeekToDays.isEmpty || sessionToTime.isEmpty) {
+      return periods;
+    }
+
+    // 处理自定义重复周次的课程
+    if (session.customRepeat && session.customRepeatWeeks.isNotEmpty) {
+      for (var week in session.customRepeatWeeks) {
+        DateTime day;
+        if (week > 16) {
+          day = dayOfWeekToDays.last.last.last.last
+              .add(Duration(days: (week - 17) * 7 + session.dayOfWeek));
+        } else {
+          final halfIndex = (week - 1) ~/ 8;
+          final oddEvenIndex = 1 - week % 2;
+          final dayIndex = (week - 1) % 8 ~/ 2;
+          if (halfIndex < dayOfWeekToDays.length &&
+              oddEvenIndex < dayOfWeekToDays[halfIndex].length &&
+              session.dayOfWeek < dayOfWeekToDays[halfIndex][oddEvenIndex].length &&
+              dayIndex < dayOfWeekToDays[halfIndex][oddEvenIndex][session.dayOfWeek].length) {
+            day = dayOfWeekToDays[halfIndex][oddEvenIndex][session.dayOfWeek][dayIndex];
+          } else {
+            continue;
+          }
+        }
+        periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, week));
+      }
+      return periods;
+    }
+
+    // 处理常规单双周课程
+    // 上半学期
+    if (session.firstHalf) {
+      if (session.oddWeek && dayOfWeekToDays[0][0].length > session.dayOfWeek) {
+        for (var day in dayOfWeekToDays[0][0][session.dayOfWeek]) {
+          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+        }
+      }
+      if (session.evenWeek && dayOfWeekToDays[0][1].length > session.dayOfWeek) {
+        for (var day in dayOfWeekToDays[0][1][session.dayOfWeek]) {
+          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+        }
+      }
+    }
+
+    // 下半学期
+    if (session.secondHalf) {
+      if (session.oddWeek && dayOfWeekToDays[1][0].length > session.dayOfWeek) {
+        for (var day in dayOfWeekToDays[1][0][session.dayOfWeek]) {
+          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+        }
+      }
+      if (session.evenWeek && dayOfWeekToDays[1][1].length > session.dayOfWeek) {
+        for (var day in dayOfWeekToDays[1][1][session.dayOfWeek]) {
+          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+        }
+      }
+    }
+
+    return periods;
+  }
+
+  /// 创建单个 Period
+  Period _createPeriodFromCustomSession(
+    CustomSession session,
+    DateTime day,
+    List<List<Duration>> sessionToTime,
+    int? week,
+  ) {
+    final startDuration = session.time.isNotEmpty && session.time.first < sessionToTime.length
+        ? sessionToTime[session.time.first].firstOrNull ?? Duration.zero
+        : Duration.zero;
+    final endDuration = session.time.isNotEmpty && session.time.last < sessionToTime.length
+        ? sessionToTime[session.time.last].lastOrNull ?? Duration.zero
+        : Duration.zero;
+
+    return Period(
+      uid: '${session.id}${session.dayOfWeek}${session.time.firstOrNull ?? 0}${week ?? ''}',
+      fromUid: session.id,
+      type: PeriodType.classes,
+      description: "教师: ${session.teacher}${session.isUserCreated ? '\n(自定义课程)' : '\n(已修改)'}",
+      location: session.location ?? "未知",
+      summary: session.name,
+      startTime: day.add(startDuration),
+      endTime: day.add(endDuration),
+    );
   }
 
   Semester get thisSemester {
@@ -110,6 +249,8 @@ class Scholar {
     aboardGpa = [0.0, 0.0, 0.0, 0.0];
     credit = 0.0;
     majorGpaAndCredit = [0.0, 0.0];
+    customSessions = [];
+    hiddenSessionIds = {};
     isLogan = false;
     lastUpdateTime = DateTime.parse("20010101");
     _spider?.logout();
@@ -225,6 +366,8 @@ class Scholar {
           specialDates.map((k, v) => MapEntry(k.toIso8601String(), v)),
       'lastUpdateTime': lastUpdateTime.toIso8601String(),
       'todos': todos,
+      'customSessions': customSessions.map((e) => e.toJson()).toList(),
+      'hiddenSessionIds': hiddenSessionIds.toList(),
     };
   }
 
@@ -295,6 +438,15 @@ class Scholar {
     todos = json.containsKey('todos') // back compatibility
         ? (json['todos'] as List).map((e) => Todo.fromJson(e)).toList()
         : [];
+    // 自定义课程和隐藏课程（向后兼容）
+    customSessions = json.containsKey('customSessions')
+        ? (json['customSessions'] as List)
+            .map((e) => CustomSession.fromJson(e as Map<String, dynamic>))
+            .toList()
+        : [];
+    hiddenSessionIds = json.containsKey('hiddenSessionIds')
+        ? Set<String>.from(json['hiddenSessionIds'] as List)
+        : {};
     isLogan = true;
     if (gpa.length == 3) {
       gpa.insert(2, 0);
@@ -302,5 +454,38 @@ class Scholar {
     if (aboardGpa.length == 3) {
       aboardGpa.insert(2, 0);
     }
+  }
+
+  // 添加自定义课程
+  void addCustomSession(CustomSession session) {
+    customSessions.add(session);
+  }
+
+  // 更新自定义课程
+  void updateCustomSession(CustomSession session) {
+    final index = customSessions.indexWhere((e) => e.id == session.id);
+    if (index != -1) {
+      customSessions[index] = session;
+    }
+  }
+
+  // 删除自定义课程
+  void removeCustomSession(String sessionId) {
+    customSessions.removeWhere((e) => e.id == sessionId);
+  }
+
+  // 隐藏教务系统课程
+  void hideSession(String sessionId) {
+    hiddenSessionIds.add(sessionId);
+  }
+
+  // 恢复显示教务系统课程
+  void unhideSession(String sessionId) {
+    hiddenSessionIds.remove(sessionId);
+  }
+
+  // 检查课程是否被隐藏
+  bool isSessionHidden(String sessionId) {
+    return hiddenSessionIds.contains(sessionId);
   }
 }

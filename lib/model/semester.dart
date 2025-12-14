@@ -296,6 +296,12 @@ class Semester {
     return periods;
   }
 
+  /// 获取日期配置（供自定义课程使用）
+  List<List<List<List<DateTime>>>> get dayOfWeekToDays => _dayOfWeekToDays;
+
+  /// 获取节次时间配置（供自定义课程使用）
+  List<List<Duration>> get sessionToTime => _sessionToTime;
+
   DateTime get firstDay {
     try {
       return _dayOfWeekToDays.first.first[1].first;

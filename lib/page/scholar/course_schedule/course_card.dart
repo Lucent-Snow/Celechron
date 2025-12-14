@@ -1,7 +1,10 @@
 import 'package:celechron/page/scholar/course_detail/course_detail_view.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:get/get.dart';
 
 import 'package:celechron/model/session.dart';
+import 'package:celechron/model/scholar.dart';
+import 'package:celechron/database/database_helper.dart';
 
 class SessionCard extends StatefulWidget {
   final List<Session> sessionList;
@@ -142,6 +145,7 @@ class _SessionCardState extends State<SessionCard>
           );
         }
       },
+      onLongPress: () => _showCourseOptions(context),
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: Container(
@@ -191,6 +195,112 @@ class _SessionCardState extends State<SessionCard>
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showCourseOptions(BuildContext context) {
+    final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+    final db = Get.find<DatabaseHelper>(tag: 'db');
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text(
+          widget.sessionList.length == 1
+              ? widget.sessionList[0].name
+              : '选择课程',
+        ),
+        actions: [
+          if (widget.sessionList.length == 1) ...[
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (widget.sessionList[0].id != null) {
+                  Navigator.of(context).push(
+                    CupertinoPageRoute(
+                      builder: (context) =>
+                          CourseDetailPage(courseId: widget.sessionList[0].id!),
+                      title: widget.sessionList[0].name,
+                    ),
+                  );
+                }
+              },
+              child: const Text('查看详情'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                if (widget.sessionList[0].id != null) {
+                  scholar.value.hideSession(widget.sessionList[0].id!);
+                  await db.setScholar(scholar.value);
+                  scholar.refresh();
+                }
+              },
+              isDestructiveAction: true,
+              child: const Text('隐藏此课程'),
+            ),
+          ] else ...[
+            for (var session in widget.sessionList)
+              CupertinoActionSheetAction(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  _showSingleCourseOptions(context, session, scholar, db);
+                },
+                child: Text(session.name),
+              ),
+          ],
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
+  void _showSingleCourseOptions(
+    BuildContext context,
+    Session session,
+    Rx<Scholar> scholar,
+    DatabaseHelper db,
+  ) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text(session.name),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (session.id != null) {
+                Navigator.of(context).push(
+                  CupertinoPageRoute(
+                    builder: (context) => CourseDetailPage(courseId: session.id!),
+                    title: session.name,
+                  ),
+                );
+              }
+            },
+            child: const Text('查看详情'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              if (session.id != null) {
+                scholar.value.hideSession(session.id!);
+                await db.setScholar(scholar.value);
+                scholar.refresh();
+              }
+            },
+            isDestructiveAction: true,
+            child: const Text('隐藏此课程'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
         ),
       ),
     );

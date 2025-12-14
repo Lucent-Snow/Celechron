@@ -3,7 +3,11 @@ import 'dart:math';
 import 'package:celechron/design/custom_colors.dart';
 import 'package:celechron/utils/tuple.dart';
 import 'package:celechron/model/session.dart';
+import 'package:celechron/model/scholar.dart';
+import 'package:celechron/model/custom_session.dart';
 import 'package:celechron/design/persistent_headers.dart';
+import 'package:celechron/page/scholar/course_edit/course_edit_page.dart';
+import 'package:celechron/database/database_helper.dart';
 import 'course_schedule_controller.dart';
 import 'package:get/get.dart';
 import 'package:celechron/design/animate_button.dart';
@@ -512,11 +516,246 @@ class CourseSchedulePage extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // 课程管理区域
+                  CupertinoListSection.insetGrouped(
+                    header: const Text('课程管理'),
+                    margin: const EdgeInsetsDirectional.fromSTEB(
+                        0.0, 0.0, 0.0, 10.0),
+                    additionalDividerMargin: 2,
+                    children: <CupertinoListTile>[
+                      CupertinoListTile(
+                        title: const Text('添加自定义课程'),
+                        leading: const Icon(CupertinoIcons.add_circled),
+                        trailing: const CupertinoListTileChevron(),
+                        onTap: () => _addCustomCourse(context),
+                      ),
+                      CupertinoListTile(
+                        title: const Text('管理自定义课程'),
+                        leading: const Icon(CupertinoIcons.pencil),
+                        trailing: const CupertinoListTileChevron(),
+                        onTap: () => _manageCustomCourses(context),
+                      ),
+                      CupertinoListTile(
+                        title: const Text('管理隐藏的课程'),
+                        leading: const Icon(CupertinoIcons.eye_slash),
+                        trailing: const CupertinoListTileChevron(),
+                        onTap: () => _manageHiddenCourses(context),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _addCustomCourse(BuildContext context) async {
+    final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+    final db = Get.find<DatabaseHelper>(tag: 'db');
+
+    final result = await Navigator.of(context).push<CustomSession>(
+      CupertinoPageRoute(
+        builder: (context) => CourseEditPage(
+          defaultSemesterName: _courseScheduleController.semester.name,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      scholar.value.addCustomSession(result);
+      await db.setScholar(scholar.value);
+      scholar.refresh();
+    }
+  }
+
+  void _manageCustomCourses(BuildContext context) {
+    final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+    final db = Get.find<DatabaseHelper>(tag: 'db');
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final customSessions = scholar.value.customSessions;
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.6,
+            decoration: BoxDecoration(
+              color: CupertinoDynamicColor.resolve(
+                  CupertinoColors.systemBackground, context),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '自定义课程',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        child: const Text('完成'),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: customSessions.isEmpty
+                      ? const Center(child: Text('暂无自定义课程'))
+                      : ListView.builder(
+                          itemCount: customSessions.length,
+                          itemBuilder: (context, index) {
+                            final session = customSessions[index];
+                            return CupertinoListTile(
+                              title: Text(session.name),
+                              subtitle: Text(session.friendlyTimeDescription),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    child: const Icon(CupertinoIcons.pencil),
+                                    onPressed: () async {
+                                      final result = await Navigator.of(context)
+                                          .push<CustomSession>(
+                                        CupertinoPageRoute(
+                                          builder: (context) =>
+                                              CourseEditPage(session: session),
+                                        ),
+                                      );
+
+                                      if (result != null) {
+                                        scholar.value.updateCustomSession(result);
+                                        await db.setScholar(scholar.value);
+                                        scholar.refresh();
+                                        setModalState(() {});
+                                      } else {
+                                        // 删除
+                                        scholar.value
+                                            .removeCustomSession(session.id);
+                                        await db.setScholar(scholar.value);
+                                        scholar.refresh();
+                                        setModalState(() {});
+                                      }
+                                    },
+                                  ),
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    child: const Icon(
+                                      CupertinoIcons.delete,
+                                      color: CupertinoColors.systemRed,
+                                    ),
+                                    onPressed: () async {
+                                      scholar.value
+                                          .removeCustomSession(session.id);
+                                      await db.setScholar(scholar.value);
+                                      scholar.refresh();
+                                      setModalState(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _manageHiddenCourses(BuildContext context) {
+    final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+    final db = Get.find<DatabaseHelper>(tag: 'db');
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final hiddenIds = scholar.value.hiddenSessionIds.toList();
+
+          // 获取隐藏课程的名称
+          List<MapEntry<String, String>> hiddenCourses = [];
+          for (var semester in scholar.value.semesters) {
+            for (var session in semester.sessions) {
+              if (session.id != null && hiddenIds.contains(session.id)) {
+                hiddenCourses.add(MapEntry(session.id!, session.name));
+              }
+            }
+          }
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.6,
+            decoration: BoxDecoration(
+              color: CupertinoDynamicColor.resolve(
+                  CupertinoColors.systemBackground, context),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '隐藏的课程',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        child: const Text('完成'),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: hiddenCourses.isEmpty
+                      ? const Center(child: Text('暂无隐藏的课程'))
+                      : ListView.builder(
+                          itemCount: hiddenCourses.length,
+                          itemBuilder: (context, index) {
+                            final course = hiddenCourses[index];
+                            return CupertinoListTile(
+                              title: Text(course.value),
+                              trailing: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                child: const Text('恢复显示'),
+                                onPressed: () async {
+                                  scholar.value.unhideSession(course.key);
+                                  await db.setScholar(scholar.value);
+                                  scholar.refresh();
+                                  setModalState(() {});
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
