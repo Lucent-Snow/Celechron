@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 class RoundRectangleCard extends StatefulWidget {
   final Widget child;
   final Function()? onTap;
+  final Function()? onLongPress;
   final bool animate;
   final List<BoxShadow> boxShadow;
   final EdgeInsets padding;
@@ -13,6 +14,7 @@ class RoundRectangleCard extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.animate = true,
     this.padding = const EdgeInsets.all(12),
     this.boxShadow = const [
@@ -113,9 +115,14 @@ class _RoundRectangleCardState extends State<RoundRectangleCard>
               if (!isDown) _animationController.reverse();
             },
             onTapCancel: () async => _animationController.reverse(),
+            onLongPress: widget.onLongPress,
             child: ScaleTransition(scale: _scaleAnimation, child: core),
           )
-        : GestureDetector(onTap: widget.onTap, child: core);
+        : GestureDetector(
+            onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
+            child: core,
+          );
   }
 }
 

@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:celechron/model/period.dart';
+import 'package:celechron/model/scholar.dart';
+import 'package:celechron/database/database_helper.dart';
 import 'package:celechron/utils/utils.dart';
 
 import 'package:celechron/design/round_rectangle_card.dart';
@@ -367,6 +369,9 @@ class _CalendarPageState extends State<CalendarPage> {
                       }
                     })
                   : null),
+      onLongPress: (period.type == PeriodType.classes)
+          ? () => _showCourseOptions(context, period)
+          : null,
       child: Padding(
         padding: const EdgeInsets.only(left: 8, right: 8),
         child: Row(
@@ -512,6 +517,62 @@ class _CalendarPageState extends State<CalendarPage> {
       decoration: customDecoration(
         color: color,
         shape: periodTypeShape[event.type]!,
+      ),
+    );
+  }
+
+  void _showCourseOptions(BuildContext context, Period period) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        actions: [
+          CupertinoActionSheetAction(
+            child: const Text('查看详情'),
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.of(context, rootNavigator: true).push(
+                CupertinoPageRoute(
+                  builder: (context) =>
+                      CourseDetailPage(courseId: period.fromUid),
+                ),
+              );
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: const Text('隐藏此次课程'),
+            onPressed: () async {
+              final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+              final db = Get.find<DatabaseHelper>(tag: 'db');
+              final navigator = Navigator.of(context);
+
+              scholar.value.hidePeriod(period);
+              await db.setScholar(scholar.value);
+              scholar.refresh();
+
+              navigator.pop();
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: const Text('隐藏此课程的所有时间'),
+            onPressed: () async {
+              final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+              final db = Get.find<DatabaseHelper>(tag: 'db');
+              final navigator = Navigator.of(context);
+
+              if (period.fromUid != null) {
+                scholar.value.hideSession(period.fromUid!);
+                await db.setScholar(scholar.value);
+                scholar.refresh();
+              }
+
+              navigator.pop();
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          child: const Text('取消'),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
     );
   }

@@ -6,6 +6,8 @@ import 'package:celechron/page/scholar/course_detail/course_detail_view.dart';
 import 'package:celechron/model/task.dart';
 import 'package:celechron/page/task/task_edit_page.dart';
 import 'package:celechron/page/task/task_controller.dart';
+import 'package:celechron/model/scholar.dart';
+import 'package:celechron/database/database_helper.dart';
 import 'calendar_controller.dart';
 
 /// 周视图日程表
@@ -125,63 +127,64 @@ class _WeekScheduleViewState extends State<WeekScheduleView> {
   }
 
   Widget _buildWeekView(BuildContext context, DateTime weekStart) {
-    return Row(
-      children: [
-        // 时间轴
-        SizedBox(
-          width: _timeAxisWidth,
-          child: _buildTimeAxis(context),
-        ),
-        // 7天的日程列
-        Expanded(
-          child: SingleChildScrollView(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: List.generate(7, (dayIndex) {
-                final day = weekStart.add(Duration(days: dayIndex));
-                return Expanded(
-                  child: _buildDayColumn(context, day, dayIndex),
-                );
-              }),
+    return SingleChildScrollView(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 时间轴
+          SizedBox(
+            width: _timeAxisWidth,
+            child: _buildTimeAxis(context),
+          ),
+          // 7天的日程列
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: List.generate(7, (dayIndex) {
+                  final day = weekStart.add(Duration(days: dayIndex));
+                  return SizedBox(
+                    width: MediaQuery.of(context).size.width / 7,
+                    child: _buildDayColumn(context, day, dayIndex),
+                  );
+                }),
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildTimeAxis(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // 日期头部占位
-          const SizedBox(height: 50),
-          // 时间刻度
-          ...List.generate(_endHour - _startHour + 1, (index) {
-            final hour = _startHour + index;
-            return SizedBox(
-              height: _hourHeight,
-              child: Align(
-                alignment: Alignment.topRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: Text(
-                    '${hour.toString().padLeft(2, '0')}:00',
-                    style: CupertinoTheme.of(context)
-                        .textTheme
-                        .textStyle
-                        .copyWith(
-                          fontSize: 10,
-                          color: CupertinoDynamicColor.resolve(
-                              CupertinoColors.secondaryLabel, context),
-                        ),
-                  ),
+    return Column(
+      children: [
+        // 日期头部占位
+        const SizedBox(height: 50),
+        // 时间刻度
+        ...List.generate(_endHour - _startHour + 1, (index) {
+          final hour = _startHour + index;
+          return SizedBox(
+            height: _hourHeight,
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(
+                  '${hour.toString().padLeft(2, '0')}:00',
+                  style:
+                      CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+                            fontSize: 10,
+                            color: CupertinoDynamicColor.resolve(
+                                CupertinoColors.secondaryLabel, context),
+                          ),
                 ),
               ),
-            );
-          }),
-        ],
-      ),
+            ),
+          );
+        }),
+      ],
     );
   }
 
@@ -299,14 +302,12 @@ class _WeekScheduleViewState extends State<WeekScheduleView> {
           (event.endTime.hour - _startHour) * 60 + event.endTime.minute;
 
       // 跳过不在显示范围内的事件
-      if (endMinutes < 0 ||
-          startMinutes > (_endHour - _startHour + 1) * 60) {
+      if (endMinutes < 0 || startMinutes > (_endHour - _startHour + 1) * 60) {
         continue;
       }
 
       final top = (startMinutes / 60) * _hourHeight;
-      final height =
-          ((endMinutes - startMinutes) / 60) * _hourHeight;
+      final height = ((endMinutes - startMinutes) / 60) * _hourHeight;
 
       eventWidgets.add(
         Positioned(
@@ -337,6 +338,9 @@ class _WeekScheduleViewState extends State<WeekScheduleView> {
 
     return GestureDetector(
       onTap: () => _onEventTap(context, event),
+      onLongPress: (event.type == PeriodType.classes)
+          ? () => _showCourseOptions(context, event)
+          : null,
       child: Container(
         margin: const EdgeInsets.all(1),
         padding: const EdgeInsets.all(2),
@@ -452,5 +456,61 @@ class _WeekScheduleViewState extends State<WeekScheduleView> {
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  void _showCourseOptions(BuildContext context, Period period) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        actions: [
+          CupertinoActionSheetAction(
+            child: const Text('查看详情'),
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.of(context, rootNavigator: true).push(
+                CupertinoPageRoute(
+                  builder: (context) =>
+                      CourseDetailPage(courseId: period.fromUid),
+                ),
+              );
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: const Text('隐藏此次课程'),
+            onPressed: () async {
+              final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+              final db = Get.find<DatabaseHelper>(tag: 'db');
+              final navigator = Navigator.of(context);
+
+              scholar.value.hidePeriod(period);
+              await db.setScholar(scholar.value);
+              scholar.refresh();
+
+              navigator.pop();
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: const Text('隐藏此课程的所有时间'),
+            onPressed: () async {
+              final scholar = Get.find<Rx<Scholar>>(tag: 'scholar');
+              final db = Get.find<DatabaseHelper>(tag: 'db');
+              final navigator = Navigator.of(context);
+
+              if (period.fromUid != null) {
+                scholar.value.hideSession(period.fromUid!);
+                await db.setScholar(scholar.value);
+                scholar.refresh();
+              }
+
+              navigator.pop();
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          child: const Text('取消'),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+    );
   }
 }

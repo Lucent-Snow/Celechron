@@ -64,6 +64,10 @@ class Scholar {
   // 被隐藏的教务系统课程ID集合
   Set<String> hiddenSessionIds = {};
 
+  // 被隐藏的特定课程实例（Session ID + 日期）集合
+  // 格式: "sessionId_yyyy-MM-dd"
+  Set<String> hiddenPeriodKeys = {};
+
   int get gradedCourseCount {
     return grades.values.fold(0, (p, e) => p + e.length);
   }
@@ -72,10 +76,21 @@ class Scholar {
     // 获取所有学期的 periods
     var allPeriods = semesters.fold(<Period>[], (p, e) => p + e.periods);
 
-    // 过滤掉被隐藏的课程（基于 fromUid）
+    // 过滤掉被隐藏的课程（基于 fromUid 和日期）
     allPeriods = allPeriods.where((period) {
-      if (period.type == PeriodType.classes && period.fromUid != null) {
-        return !hiddenSessionIds.contains(period.fromUid);
+      if (period.type == PeriodType.classes) {
+        // 检查整个课程是否被隐藏
+        if (period.fromUid != null &&
+            hiddenSessionIds.contains(period.fromUid)) {
+          return false;
+        }
+        // 检查特定日期的实例是否被隐藏
+        if (period.fromUid != null) {
+          final dateKey = _getPeriodDateKey(period.fromUid!, period.startTime);
+          if (hiddenPeriodKeys.contains(dateKey)) {
+            return false;
+          }
+        }
       }
       return true;
     }).toList();
@@ -134,14 +149,19 @@ class Scholar {
           final dayIndex = (week - 1) % 8 ~/ 2;
           if (halfIndex < dayOfWeekToDays.length &&
               oddEvenIndex < dayOfWeekToDays[halfIndex].length &&
-              session.dayOfWeek < dayOfWeekToDays[halfIndex][oddEvenIndex].length &&
-              dayIndex < dayOfWeekToDays[halfIndex][oddEvenIndex][session.dayOfWeek].length) {
-            day = dayOfWeekToDays[halfIndex][oddEvenIndex][session.dayOfWeek][dayIndex];
+              session.dayOfWeek <
+                  dayOfWeekToDays[halfIndex][oddEvenIndex].length &&
+              dayIndex <
+                  dayOfWeekToDays[halfIndex][oddEvenIndex][session.dayOfWeek]
+                      .length) {
+            day = dayOfWeekToDays[halfIndex][oddEvenIndex][session.dayOfWeek]
+                [dayIndex];
           } else {
             continue;
           }
         }
-        periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, week));
+        periods.add(
+            _createPeriodFromCustomSession(session, day, sessionToTime, week));
       }
       return periods;
     }
@@ -151,12 +171,15 @@ class Scholar {
     if (session.firstHalf) {
       if (session.oddWeek && dayOfWeekToDays[0][0].length > session.dayOfWeek) {
         for (var day in dayOfWeekToDays[0][0][session.dayOfWeek]) {
-          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+          periods.add(_createPeriodFromCustomSession(
+              session, day, sessionToTime, null));
         }
       }
-      if (session.evenWeek && dayOfWeekToDays[0][1].length > session.dayOfWeek) {
+      if (session.evenWeek &&
+          dayOfWeekToDays[0][1].length > session.dayOfWeek) {
         for (var day in dayOfWeekToDays[0][1][session.dayOfWeek]) {
-          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+          periods.add(_createPeriodFromCustomSession(
+              session, day, sessionToTime, null));
         }
       }
     }
@@ -165,12 +188,15 @@ class Scholar {
     if (session.secondHalf) {
       if (session.oddWeek && dayOfWeekToDays[1][0].length > session.dayOfWeek) {
         for (var day in dayOfWeekToDays[1][0][session.dayOfWeek]) {
-          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+          periods.add(_createPeriodFromCustomSession(
+              session, day, sessionToTime, null));
         }
       }
-      if (session.evenWeek && dayOfWeekToDays[1][1].length > session.dayOfWeek) {
+      if (session.evenWeek &&
+          dayOfWeekToDays[1][1].length > session.dayOfWeek) {
         for (var day in dayOfWeekToDays[1][1][session.dayOfWeek]) {
-          periods.add(_createPeriodFromCustomSession(session, day, sessionToTime, null));
+          periods.add(_createPeriodFromCustomSession(
+              session, day, sessionToTime, null));
         }
       }
     }
@@ -185,18 +211,22 @@ class Scholar {
     List<List<Duration>> sessionToTime,
     int? week,
   ) {
-    final startDuration = session.time.isNotEmpty && session.time.first < sessionToTime.length
-        ? sessionToTime[session.time.first].firstOrNull ?? Duration.zero
-        : Duration.zero;
-    final endDuration = session.time.isNotEmpty && session.time.last < sessionToTime.length
-        ? sessionToTime[session.time.last].lastOrNull ?? Duration.zero
-        : Duration.zero;
+    final startDuration =
+        session.time.isNotEmpty && session.time.first < sessionToTime.length
+            ? sessionToTime[session.time.first].firstOrNull ?? Duration.zero
+            : Duration.zero;
+    final endDuration =
+        session.time.isNotEmpty && session.time.last < sessionToTime.length
+            ? sessionToTime[session.time.last].lastOrNull ?? Duration.zero
+            : Duration.zero;
 
     return Period(
-      uid: '${session.id}${session.dayOfWeek}${session.time.firstOrNull ?? 0}${week ?? ''}',
+      uid:
+          '${session.id}${session.dayOfWeek}${session.time.firstOrNull ?? 0}${week ?? ''}',
       fromUid: session.id,
       type: PeriodType.classes,
-      description: "教师: ${session.teacher}${session.isUserCreated ? '\n(自定义课程)' : '\n(已修改)'}",
+      description:
+          "教师: ${session.teacher}${session.isUserCreated ? '\n(自定义课程)' : '\n(已修改)'}",
       location: session.location ?? "未知",
       summary: session.name,
       startTime: day.add(startDuration),
@@ -251,6 +281,7 @@ class Scholar {
     majorGpaAndCredit = [0.0, 0.0];
     customSessions = [];
     hiddenSessionIds = {};
+    hiddenPeriodKeys = {};
     isLogan = false;
     lastUpdateTime = DateTime.parse("20010101");
     _spider?.logout();
@@ -292,39 +323,39 @@ class Scholar {
           if (value.item2.every((e) => e == null) || value.item3.isNotEmpty) {
             semesters = value.item3;
           }
-          
+
           if (value.item2.every((e) => e == null) || value.item4.isNotEmpty) {
-             grades = value.item4.fold(<String, List<Grade>>{}, (p, e) {
-            // 体育课
-            var matchClass = RegExp(r'(\(.*\)-(.*?))-.*').firstMatch(e.id);
-            var key = matchClass?.group(2) ?? e.id.substring(14, 22);
-            if (key.startsWith('PPAE') || key.startsWith('401')) {
-              key = matchClass?.group(1) ?? e.id.substring(0, 22);
-            }
-            var courseIdMappingList =
-                Get.find<OptionController>(tag: 'optionController')
-                    .courseIdMappingList;
-            var courseIdMappingMap = {
-              for (var e in courseIdMappingList) e.id1: e.id2
-            };
-            if (courseIdMappingMap.containsKey(key)) {
-              key = courseIdMappingMap[key]!;
-            }
-            p.putIfAbsent(key, () => <Grade>[]).add(e);
-            return p;
-          });
+            grades = value.item4.fold(<String, List<Grade>>{}, (p, e) {
+              // 体育课
+              var matchClass = RegExp(r'(\(.*\)-(.*?))-.*').firstMatch(e.id);
+              var key = matchClass?.group(2) ?? e.id.substring(14, 22);
+              if (key.startsWith('PPAE') || key.startsWith('401')) {
+                key = matchClass?.group(1) ?? e.id.substring(0, 22);
+              }
+              var courseIdMappingList =
+                  Get.find<OptionController>(tag: 'optionController')
+                      .courseIdMappingList;
+              var courseIdMappingMap = {
+                for (var e in courseIdMappingList) e.id1: e.id2
+              };
+              if (courseIdMappingMap.containsKey(key)) {
+                key = courseIdMappingMap[key]!;
+              }
+              p.putIfAbsent(key, () => <Grade>[]).add(e);
+              return p;
+            });
           }
-         
+
           if (value.item2.every((e) => e == null) || value.item5.isNotEmpty) {
-             majorGpaAndCredit = value.item5;
+            majorGpaAndCredit = value.item5;
           }
-          
+
           if (value.item2.every((e) => e == null) || value.item6.isNotEmpty) {
-             specialDates = value.item6;
+            specialDates = value.item6;
           }
-          
+
           if (value.item2.every((e) => e == null) || value.item7.isNotEmpty) {
-             todos = value.item7;
+            todos = value.item7;
           }
 
           // 保研成绩，只取第一次
@@ -368,6 +399,7 @@ class Scholar {
       'todos': todos,
       'customSessions': customSessions.map((e) => e.toJson()).toList(),
       'hiddenSessionIds': hiddenSessionIds.toList(),
+      'hiddenPeriodKeys': hiddenPeriodKeys.toList(),
     };
   }
 
@@ -447,6 +479,9 @@ class Scholar {
     hiddenSessionIds = json.containsKey('hiddenSessionIds')
         ? Set<String>.from(json['hiddenSessionIds'] as List)
         : {};
+    hiddenPeriodKeys = json.containsKey('hiddenPeriodKeys')
+        ? Set<String>.from(json['hiddenPeriodKeys'] as List)
+        : {};
     isLogan = true;
     if (gpa.length == 3) {
       gpa.insert(2, 0);
@@ -487,5 +522,32 @@ class Scholar {
   // 检查课程是否被隐藏
   bool isSessionHidden(String sessionId) {
     return hiddenSessionIds.contains(sessionId);
+  }
+
+  // 生成 Period 日期键（Session ID + 日期）
+  String _getPeriodDateKey(String sessionId, DateTime date) {
+    return '${sessionId}_${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  // 隐藏特定课程实例（某一天的课程）
+  void hidePeriod(Period period) {
+    if (period.fromUid != null) {
+      final dateKey = _getPeriodDateKey(period.fromUid!, period.startTime);
+      hiddenPeriodKeys.add(dateKey);
+    }
+  }
+
+  // 恢复显示特定课程实例
+  void unhidePeriod(String dateKey) {
+    hiddenPeriodKeys.remove(dateKey);
+  }
+
+  // 检查特定课程实例是否被隐藏
+  bool isPeriodHidden(Period period) {
+    if (period.fromUid != null) {
+      final dateKey = _getPeriodDateKey(period.fromUid!, period.startTime);
+      return hiddenPeriodKeys.contains(dateKey);
+    }
+    return false;
   }
 }

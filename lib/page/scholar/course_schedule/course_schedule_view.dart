@@ -5,6 +5,7 @@ import 'package:celechron/utils/tuple.dart';
 import 'package:celechron/model/session.dart';
 import 'package:celechron/model/scholar.dart';
 import 'package:celechron/model/custom_session.dart';
+import 'package:celechron/model/period.dart';
 import 'package:celechron/design/persistent_headers.dart';
 import 'package:celechron/page/scholar/course_edit/course_edit_page.dart';
 import 'package:celechron/database/database_helper.dart';
@@ -637,7 +638,8 @@ class CourseSchedulePage extends StatelessWidget {
                                       );
 
                                       if (result != null) {
-                                        scholar.value.updateCustomSession(result);
+                                        scholar.value
+                                            .updateCustomSession(result);
                                         await db.setScholar(scholar.value);
                                         scholar.refresh();
                                         setModalState(() {});
@@ -699,8 +701,37 @@ class CourseSchedulePage extends StatelessWidget {
             }
           }
 
+          // 获取隐藏的单次课程信息
+          List<MapEntry<String, Period>> hiddenPeriods = [];
+          if (scholar.value.hiddenPeriodKeys.isNotEmpty) {
+            // 获取所有原始 periods（未过滤的）
+            var allPeriods = scholar.value.semesters
+                .fold(<Period>[], (p, e) => p + e.periods);
+
+            for (var dateKey in scholar.value.hiddenPeriodKeys) {
+              // 解析 dateKey: "sessionId_yyyy-MM-dd"
+              final parts = dateKey.split('_');
+              if (parts.length == 2) {
+                final sessionId = parts[0];
+                final dateStr = parts[1];
+
+                // 查找匹配的 Period
+                final period = allPeriods.firstWhereOrNull((p) {
+                  if (p.fromUid != sessionId) return false;
+                  final pDateStr =
+                      '${p.startTime.year}-${p.startTime.month.toString().padLeft(2, '0')}-${p.startTime.day.toString().padLeft(2, '0')}';
+                  return pDateStr == dateStr;
+                });
+
+                if (period != null) {
+                  hiddenPeriods.add(MapEntry(dateKey, period));
+                }
+              }
+            }
+          }
+
           return Container(
-            height: MediaQuery.of(context).size.height * 0.6,
+            height: MediaQuery.of(context).size.height * 0.7,
             decoration: BoxDecoration(
               color: CupertinoDynamicColor.resolve(
                   CupertinoColors.systemBackground, context),
@@ -715,7 +746,7 @@ class CourseSchedulePage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        '隐藏的课程',
+                        '管理隐藏的课程',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -730,13 +761,22 @@ class CourseSchedulePage extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: hiddenCourses.isEmpty
-                      ? const Center(child: Text('暂无隐藏的课程'))
-                      : ListView.builder(
-                          itemCount: hiddenCourses.length,
-                          itemBuilder: (context, index) {
-                            final course = hiddenCourses[index];
-                            return CupertinoListTile(
+                  child: ListView(
+                    children: [
+                      // 隐藏的整个课程
+                      if (hiddenCourses.isNotEmpty) ...[
+                        const Padding(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Text(
+                            '隐藏的课程（所有时间）',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: CupertinoColors.secondaryLabel,
+                            ),
+                          ),
+                        ),
+                        ...hiddenCourses.map((course) => CupertinoListTile(
                               title: Text(course.value),
                               trailing: CupertinoButton(
                                 padding: EdgeInsets.zero,
@@ -748,9 +788,71 @@ class CourseSchedulePage extends StatelessWidget {
                                   setModalState(() {});
                                 },
                               ),
-                            );
-                          },
+                            )),
+                      ],
+                      // 隐藏的单次课程
+                      if (hiddenPeriods.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          child: Text(
+                            '隐藏的单次课程',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: CupertinoDynamicColor.resolve(
+                                  CupertinoColors.secondaryLabel, context),
+                            ),
+                          ),
                         ),
+                        ...hiddenPeriods.map((entry) {
+                          final period = entry.value;
+                          final weekdays = [
+                            '',
+                            '周一',
+                            '周二',
+                            '周三',
+                            '周四',
+                            '周五',
+                            '周六',
+                            '周日'
+                          ];
+                          final weekday = weekdays[period.startTime.weekday];
+                          final dateStr =
+                              '${period.startTime.month}月${period.startTime.day}日';
+                          final timeStr =
+                              '${period.startTime.hour.toString().padLeft(2, '0')}:${period.startTime.minute.toString().padLeft(2, '0')}-${period.endTime.hour.toString().padLeft(2, '0')}:${period.endTime.minute.toString().padLeft(2, '0')}';
+
+                          return CupertinoListTile(
+                            title: Text(period.summary),
+                            subtitle: Text('$dateStr $weekday $timeStr'),
+                            trailing: CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              child: const Text('恢复显示'),
+                              onPressed: () async {
+                                scholar.value.unhidePeriod(entry.key);
+                                await db.setScholar(scholar.value);
+                                scholar.refresh();
+                                setModalState(() {});
+                              },
+                            ),
+                          );
+                        }),
+                      ],
+                      // 空状态
+                      if (hiddenCourses.isEmpty && hiddenPeriods.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Center(
+                            child: Text(
+                              '暂无隐藏的课程',
+                              style: TextStyle(
+                                color: CupertinoColors.secondaryLabel,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ],
             ),
