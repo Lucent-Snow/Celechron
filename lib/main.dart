@@ -16,6 +16,7 @@ import 'package:celechron/page/home_page.dart';
 import 'package:celechron/page/option/ecard_pay_page.dart';
 import 'package:celechron/worker/ecard_widget_messenger.dart';
 import 'package:celechron/database/database_helper.dart';
+import 'package:celechron/database/migration_helper.dart';
 
 void main() async {
   // 初始化数据库
@@ -23,9 +24,13 @@ void main() async {
   var db = Get.put(DatabaseHelper(), tag: 'db');
   await db.init();
 
+  // 执行数据迁移（将旧的Task系统迁移到TodoItem系统）
+  await TodoMigration.migrateTasksToTodoItems(db);
+
   // 注入数据观察项（相当于事件总线，更新这些变量将导致Widget重绘
   Get.put((await db.getScholar()).obs, tag: 'scholar');
-  Get.put(db.getTaskList().obs, tag: 'taskList');
+  Get.put(db.getTodoItemList().obs, tag: 'todoList'); // 使用新的TodoItem列表
+  Get.put(db.getTaskList().obs, tag: 'taskList'); // 暂时保留，用于兼容
   Get.put(db.getTaskListUpdateTime().obs, tag: 'taskListLastUpdate');
   Get.put(db.getFlowList().obs, tag: 'flowList');
   Get.put(db.getFlowListUpdateTime().obs, tag: 'flowListLastUpdate');

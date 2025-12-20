@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 import 'package:celechron/page/scholar/scholar_view.dart';
 import 'package:celechron/page/search/search_view.dart';
 import 'package:celechron/page/flow/flow_view.dart';
-import 'package:celechron/page/task/task_view.dart';
+import 'package:celechron/page/todo/todo_page.dart';
 import 'package:celechron/page/calendar/calendar_view.dart';
 import 'package:celechron/page/option/option_view.dart';
 
@@ -64,8 +64,8 @@ class _HomePageState extends State<HomePage> {
             label: '日程',
           ),
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.check_mark),
-            label: '任务',
+            icon: Icon(CupertinoIcons.checkmark_circle),
+            label: '待办',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.school_rounded),
@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
     List<Widget> widgetList = [
       FlowPage(),
       CalendarPage(),
-      TaskPage(),
+      TodoPage(), // 使用新的TodoPage
       ScholarPage(),
       OptionPage(),
       SearchPage(), // 缓存一下

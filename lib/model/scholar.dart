@@ -6,12 +6,14 @@ import 'period.dart';
 import 'grade.dart';
 import 'semester.dart';
 import 'todo.dart';
+import 'todo_item.dart';
 import 'custom_session.dart';
 import 'package:celechron/utils/gpa_helper.dart';
 import 'package:celechron/http/spider.dart';
 import 'package:celechron/http/ugrs_spider.dart';
 import 'package:celechron/http/grs_spider.dart';
 import 'package:celechron/database/database_helper.dart';
+import 'package:uuid/uuid.dart';
 
 class Scholar {
   Scholar();
@@ -378,6 +380,10 @@ class Scholar {
           }
 
           await _db?.setScholar(this);
+
+          // 同步课程作业到TodoItem
+          await syncCourseAssignments();
+
           return value.item1.every((e) => e == null)
               ? value.item2
               : value.item1;
@@ -550,4 +556,82 @@ class Scholar {
     }
     return false;
   }
+
+  /// 同步课程作业到TodoItem列表
+  /// 从todos（学在浙大获取的作业列表）自动导入到TodoItem系统
+  Future<void> syncCourseAssignments() async {
+    if (_db == null) return;
+
+    // 获取现有的TodoItem列表
+    List<TodoItem> existingItems = _db!.getTodoItemList();
+
+    // 建立sourceId到TodoItem的索引，方便查找
+    Map<String, TodoItem> existingBySourceId = {};
+    for (var item in existingItems) {
+      if (item.sourceId != null) {
+        existingBySourceId[item.sourceId!] = item;
+      }
+    }
+
+    // 获取远程Todo的ID集合，用于检测删除
+    Set<String> remoteTodoIds = todos.map((t) => t.id).toSet();
+
+    // 处理每个课程作业
+    for (Todo remoteTodo in todos) {
+      String sourceId = remoteTodo.id;
+
+      if (existingBySourceId.containsKey(sourceId)) {
+        // 已存在的课程作业，更新信息
+        TodoItem existing = existingBySourceId[sourceId]!;
+
+        // 更新标题
+        if (existing.title != remoteTodo.name) {
+          existing.title = remoteTodo.name;
+        }
+
+        // 更新截止时间
+        if (existing.deadline != remoteTodo.endTime) {
+          existing.deadline = remoteTodo.endTime;
+        }
+
+        // 更新课程名称
+        if (existing.courseName != remoteTodo.course) {
+          existing.courseName = remoteTodo.course;
+        }
+
+        // 注意：不覆盖用户的完成状态
+        // 用户可能已经手动标记为完成，应该尊重用户的操作
+      } else {
+        // 新的课程作业，添加到列表
+        existingItems.add(TodoItem(
+          uid: const Uuid().v4(),
+          title: remoteTodo.name,
+          deadline: remoteTodo.endTime,
+          isCompleted: false,
+          createdAt: DateTime.now(),
+          completedAt: null,
+          sourceId: remoteTodo.id,
+          courseName: remoteTodo.course,
+          notes: null,
+        ));
+      }
+    }
+
+    // 处理远程已删除的课程作业
+    // 将本地的课程作业标记为"已从系统移除"，但不直接删除
+    // 这样用户可以看到哪些作业被移除了
+    for (var item in existingItems) {
+      if (item.sourceId != null && !remoteTodoIds.contains(item.sourceId)) {
+        // 在备注中添加标记
+        if (item.notes == null || !item.notes!.contains('[已从系统移除]')) {
+          item.notes = (item.notes ?? '') + '\n[已从系统移除]';
+        }
+      }
+    }
+
+    // 保存更新后的TodoItem列表
+    await _db!.setTodoItemList(existingItems);
+    await _db!.setTodoItemListUpdateTime(DateTime.now());
+  }
 }
+

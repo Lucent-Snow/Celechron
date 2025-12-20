@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:celechron/model/task.dart';
+import 'package:celechron/model/todo_item.dart';
 import 'package:celechron/worker/fuse.dart';
 import 'package:celechron/model/scholar.dart';
 import 'package:celechron/model/period.dart';
@@ -11,6 +12,7 @@ import 'package:celechron/utils/utils.dart';
 import 'adapters/duration_adapter.dart';
 import 'adapters/scholar_adapter.dart';
 import 'adapters/deadline_adapter.dart';
+import 'adapters/todo_item_adapter.dart';
 import 'adapters/period_adapter.dart';
 import 'adapters/fuse_adapter.dart';
 import 'adapters/course_id_map_adapter.dart';
@@ -19,6 +21,7 @@ class DatabaseHelper {
   late final Box optionsBox;
   late final Box scholarBox;
   late final Box taskBox;
+  late final Box todoItemBox;
   late final Box flowBox;
   late final Box originalWebPageBox;
   late final Box fuseBox;
@@ -32,6 +35,7 @@ class DatabaseHelper {
     Hive.registerAdapter(DeadlineTypeAdapter());
     Hive.registerAdapter(DeadlineRepeatTypeAdapter());
     Hive.registerAdapter(DeadlineAdapter());
+    Hive.registerAdapter(TodoItemAdapter());
     Hive.registerAdapter(PeriodTypeAdapter());
     Hive.registerAdapter(PeriodAdapter());
     Hive.registerAdapter(FuseAdapter());
@@ -39,6 +43,7 @@ class DatabaseHelper {
     optionsBox = await Hive.openBox(dbOptions);
     scholarBox = await Hive.openBox(dbScholar);
     taskBox = await Hive.openBox(dbTask);
+    todoItemBox = await Hive.openBox(dbTodoItems);
     flowBox = await Hive.openBox(dbFlow);
     originalWebPageBox = await Hive.openBox(dbOriginalWebPage);
     fuseBox = await Hive.openBox(dbFuse);
@@ -218,6 +223,28 @@ class DatabaseHelper {
 
   Future<void> setTaskListUpdateTime(DateTime deadlineListUpdateTime) async {
     await taskBox.put(kTaskListUpdateTime, deadlineListUpdateTime);
+  }
+
+  // TodoItem
+  final String dbTodoItems = 'dbTodoItems';
+  final String kTodoItemList = 'todoItemList';
+  final String kTodoItemListUpdateTime = 'todoItemListUpdateTime';
+
+  List<TodoItem> getTodoItemList() {
+    return List<TodoItem>.from(todoItemBox.get(kTodoItemList) ?? <TodoItem>[]);
+  }
+
+  Future<void> setTodoItemList(List<TodoItem> todoItemList) async {
+    await todoItemBox.put(kTodoItemList, todoItemList);
+  }
+
+  DateTime getTodoItemListUpdateTime() {
+    return todoItemBox.get(kTodoItemListUpdateTime) ??
+        DateTime.fromMicrosecondsSinceEpoch(0);
+  }
+
+  Future<void> setTodoItemListUpdateTime(DateTime updateTime) async {
+    await todoItemBox.put(kTodoItemListUpdateTime, updateTime);
   }
 
   // Scholar
